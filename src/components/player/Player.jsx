@@ -217,7 +217,7 @@ export default function Player({
       const url = new URL(iframeUrl);
       headers.Referer = url.origin + "/";
     } else {
-      headers.Referer = "https://megacloud.club/";
+      headers.Referer = "https://hianimez.to/";
     }
     const art = new Artplayer({
       url:
