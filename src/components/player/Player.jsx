@@ -33,15 +33,15 @@ Artplayer.LOG_VERSION = false;
 Artplayer.CONTEXTMENU = false;
 
 const KEY_CODES = {
-  M: "m",
-  I: "i",
-  F: "f",
-  V: "v",
-  SPACE: " ",
-  ARROW_UP: "arrowup",
-  ARROW_DOWN: "arrowdown",
-  ARROW_RIGHT: "arrowright",
-  ARROW_LEFT: "arrowleft",
+  M: "KeyM",
+  I: "KeyI",
+  F: "KeyF",
+  V: "KeyV",
+  SPACE: "Space",
+  ARROW_UP: "ArrowUp",
+  ARROW_DOWN: "ArrowDown",
+  ARROW_RIGHT: "ArrowRight",
+  ARROW_LEFT: "ArrowLeft",
 };
 
 export default function Player({
@@ -61,7 +61,8 @@ export default function Player({
   streamInfo,
 }) {
   const artRef = useRef(null);
-  const leftAtRef = useRef(0); 
+  const leftAtRef = useRef(0);
+  const boundKeydownRef = useRef(null); 
   const proxy = import.meta.env.VITE_PROXY_URL;
   const m3u8proxy = import.meta.env.VITE_M3U8_PROXY_URL?.split(",") || [];
   const [currentEpisodeIndex, setCurrentEpisodeIndex] = useState(
@@ -78,6 +79,7 @@ export default function Player({
       setCurrentEpisodeIndex(newIndex);
     }
   }, [episodeId, episodes]);
+
   useEffect(() => {
     const applyChapterStyles = () => {
       const existingStyles = document.querySelectorAll(
@@ -110,18 +112,15 @@ export default function Player({
 
       art.on("destroy", () => hls.destroy());
 
-      // hls.on(Hls.Events.ERROR, (event, data) => {
-      //   console.error("HLS.js error:", data);
-      // });
       video.addEventListener("timeupdate", () => {
         const currentTime = Math.round(video.currentTime);
         const duration = Math.round(video.duration);
         if (duration > 0 && currentTime >= duration) {
-            art.pause();
-            if (currentEpisodeIndex < episodes?.length - 1 && autoNext) {
-              playNext(
-                episodes[currentEpisodeIndex + 1].id.match(/ep=(\d+)/)?.[1]
-              );
+          art.pause();
+          if (currentEpisodeIndex < episodes?.length - 1 && autoNext) {
+            playNext(
+              episodes[currentEpisodeIndex + 1].id.match(/ep=(\d+)/)?.[1]
+            );
           }
         }
       });
@@ -131,11 +130,11 @@ export default function Player({
         const currentTime = Math.round(video.currentTime);
         const duration = Math.round(video.duration);
         if (duration > 0 && currentTime >= duration) {
-            art.pause();
-            if (currentEpisodeIndex < episodes?.length - 1 && autoNext) {
-              playNext(
-                episodes[currentEpisodeIndex + 1].id.match(/ep=(\d+)/)?.[1]
-              );
+          art.pause();
+          if (currentEpisodeIndex < episodes?.length - 1 && autoNext) {
+            playNext(
+              episodes[currentEpisodeIndex + 1].id.match(/ep=(\d+)/)?.[1]
+            );
           }
         }
       });
@@ -156,11 +155,13 @@ export default function Player({
   };
 
   const handleKeydown = (event, art) => {
-    const tagName = event.target.tagName.toLowerCase();
+    const target = event.target;
+    const tagName = target?.tagName?.toLowerCase();
+    const isEditable = target?.isContentEditable;
 
-    if (tagName === "input" || tagName === "textarea") return;
+    if (tagName === "input" || tagName === "textarea" || isEditable) return;
 
-    switch (event.key.toLowerCase()) {
+    switch (event.code) {
       case KEY_CODES.M:
         art.muted = !art.muted;
         break;
@@ -209,20 +210,18 @@ export default function Player({
 
   useEffect(() => {
     if (!streamUrl || !artRef.current) return;
+
     const iframeUrl = streamInfo?.streamingLink?.iframe;
-    const headers = {};
-    headers.referer=new URL(iframeUrl).origin+"/";
-    console.log(m3u8proxy[Math.floor(Math.random() * m3u8proxy?.length)] +
-        encodeURIComponent(streamUrl) +
-         "&headers=" +
-         encodeURIComponent(JSON.stringify(headers)));
-    
+    const headers = {
+      referer: new URL(iframeUrl).origin + "/",
+    };
+
     const art = new Artplayer({
       url:
         m3u8proxy[Math.floor(Math.random() * m3u8proxy?.length)] +
         encodeURIComponent(streamUrl) +
-         "&headers=" +
-         encodeURIComponent(JSON.stringify(headers)),
+        "&headers=" +
+        encodeURIComponent(JSON.stringify(headers)),
       container: artRef.current,
       type: "m3u8",
       autoplay: autoPlay,
@@ -240,8 +239,8 @@ export default function Player({
       fastForward: true,
       aspectRatio: true,
       moreVideoAttr: {
-        crossOrigin: 'anonymous',
-        preload: 'none',
+        crossOrigin: "anonymous",
+        preload: "none",
         playsInline: true,
       },
       plugins: [
@@ -369,12 +368,13 @@ export default function Player({
       },
       customType: { m3u8: playM3u8 },
     });
+
     art.on("resize", () => {
       art.subtitle.style({
-        fontSize:
-          (art.width > 500 ? art.width * 0.02 : art.width * 0.03) + "px",
+        fontSize: (art.width > 500 ? art.width * 0.02 : art.width * 0.03) + "px",
       });
     });
+
     art.on("ready", () => {
       const continueWatchingList = JSON.parse(localStorage.getItem("continueWatching")) || [];
       const currentEntry = continueWatchingList.find((item) => item.episodeId === episodeId);
@@ -388,7 +388,15 @@ export default function Player({
         art.layers[website_name].style.opacity = 0;
       }, 2000);
 
-      const defaultSubtitle = subtitles?.find((sub) => sub.label.toLowerCase() === "english");
+      const subs = (subtitles || []).map((s) => ({ ...s }));
+
+      for (const sub of subs) {
+        const encodedUrl = encodeURIComponent(sub.file);
+        const encodedHeaders = encodeURIComponent(JSON.stringify(headers));
+        sub.file = `${proxy}${encodedUrl}&headers=${encodedHeaders}`;
+      }
+
+      const defaultSubtitle = subs?.find((sub) => sub.label.toLowerCase() === "english");
       if (defaultSubtitle) {
         art.subtitle.switch(defaultSubtitle.file, {
           name: defaultSubtitle.label,
@@ -397,12 +405,21 @@ export default function Player({
       }
 
       const skipRanges = [
-        ...(intro.start != null && intro.end != null ? [[intro.start + 1, intro.end - 1]] : []),
-        ...(outro.start != null && outro.end != null ? [[outro.start + 1, outro.end]] : []),
+        ...(intro?.start != null && intro?.end != null ? [[intro.start + 1, intro.end - 1]] : []),
+        ...(outro?.start != null && outro?.end != null ? [[outro.start + 1, outro.end]] : []),
       ];
       autoSkipIntro && art.plugins.add(autoSkip(skipRanges));
 
-      document.addEventListener("keydown", (event) => handleKeydown(event, art));
+      const boundKeydown = (event) => handleKeydown(event, art);
+      boundKeydownRef.current = boundKeydown;
+      document.addEventListener("keydown", boundKeydown);
+
+      art.on("destroy", () => {
+        if (boundKeydownRef.current) {
+          document.removeEventListener("keydown", boundKeydownRef.current);
+          boundKeydownRef.current = null;
+        }
+      });
 
       art.subtitle.style({
         fontSize: (art.width > 500 ? art.width * 0.02 : art.width * 0.03) + "px",
@@ -433,10 +450,11 @@ export default function Player({
             art.layers["forwardIcon"].style.opacity = 0;
           }, 300);
         });
-      if (subtitles?.length > 0) {
+
+      if (subs?.length > 0) {
         const defaultEnglishSub =
-          subtitles.find((sub) => sub.label.toLowerCase() === "english" && sub.default) ||
-          subtitles.find((sub) => sub.label.toLowerCase() === "english");
+          subs.find((sub) => sub.label.toLowerCase() === "english" && sub.default) ||
+          subs.find((sub) => sub.label.toLowerCase() === "english");
 
         art.setting.add({
           name: "captions",
@@ -454,7 +472,7 @@ export default function Player({
                 return !item.switch;
               },
             },
-            ...subtitles.map((sub) => ({
+            ...subs.map((sub) => ({
               default: sub.label.toLowerCase() === "english" && sub === defaultEnglishSub,
               html: sub.label,
               url: sub.file,
@@ -472,7 +490,12 @@ export default function Player({
       if (art && art.destroy) {
         art.destroy(false);
       }
-      document.removeEventListener("keydown", handleKeydown);
+
+      if (boundKeydownRef.current) {
+        document.removeEventListener("keydown", boundKeydownRef.current);
+        boundKeydownRef.current = null;
+      }
+
       const continueWatching = JSON.parse(localStorage.getItem("continueWatching")) || [];
       const newEntry = {
         id: animeInfo?.id,
