@@ -73,27 +73,31 @@ export default function IframePlayer({
     setLoading(true);
     setIframeLoaded(false);
     return () => {
-      const continueWatching = JSON.parse(localStorage.getItem("continueWatching")) || [];
-      const newEntry = {
-        id: animeInfo?.id,
-        data_id: animeInfo?.data_id,
-        episodeId,
-        episodeNum,
-        adultContent: animeInfo?.adultContent,
-        poster: animeInfo?.poster,
-        title: animeInfo?.title,
-        japanese_title: animeInfo?.japanese_title,
-      };
-      if (!newEntry.data_id) return;
-      const existingIndex = continueWatching.findIndex(
-        (item) => item.data_id === newEntry.data_id
-      );
-      if (existingIndex !== -1) {
-        continueWatching[existingIndex] = newEntry;
-      } else {
-        continueWatching.push(newEntry);
+      try {
+        const continueWatching = JSON.parse(localStorage.getItem("continueWatching")) || [];
+        const newEntry = {
+          id: animeInfo?.id,
+          data_id: animeInfo?.data_id,
+          episodeId,
+          episodeNum,
+          adultContent: animeInfo?.adultContent,
+          poster: animeInfo?.poster,
+          title: animeInfo?.title,
+          japanese_title: animeInfo?.japanese_title,
+          updatedAt: Date.now(),
+        };
+        if (!newEntry.data_id) return;
+
+        const filtered = continueWatching.filter(
+          (item) => item.data_id !== newEntry.data_id
+        );
+
+        filtered.unshift(newEntry);
+
+        localStorage.setItem("continueWatching", JSON.stringify(filtered));
+      } catch (err) {
+        console.error("Failed to save continueWatching:", err);
       }
-      localStorage.setItem("continueWatching", JSON.stringify(continueWatching));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [episodeId, servertype]);
