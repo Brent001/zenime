@@ -1,3 +1,5 @@
+/* eslint-disable no-empty */
+/* eslint-disable no-unused-vars */
 /* eslint-disable react/prop-types */
 import Hls from "hls.js";
 import { useEffect, useRef, useState } from "react";
@@ -37,7 +39,8 @@ const KEY_CODES = {
   I: "KeyI",
   F: "KeyF",
   V: "KeyV",
-  SPACE: "Space",
+  SPACE: "Space", 
+  SPACE_LEGACY: "Spacebar", 
   ARROW_UP: "ArrowUp",
   ARROW_DOWN: "ArrowDown",
   ARROW_RIGHT: "ArrowRight",
@@ -62,13 +65,11 @@ export default function Player({
 }) {
   const artRef = useRef(null);
   const leftAtRef = useRef(0);
-  const boundKeydownRef = useRef(null); 
+  const boundKeydownRef = useRef(null);
   const proxy = import.meta.env.VITE_PROXY_URL;
   const m3u8proxy = import.meta.env.VITE_M3U8_PROXY_URL?.split(",") || [];
   const [currentEpisodeIndex, setCurrentEpisodeIndex] = useState(
-    episodes?.findIndex(
-      (episode) => episode.id.match(/ep=(\d+)/)?.[1] === episodeId
-    )
+    episodes?.findIndex((episode) => episode.id.match(/ep=(\d+)/)?.[1] === episodeId)
   );
 
   useEffect(() => {
@@ -82,9 +83,7 @@ export default function Player({
 
   useEffect(() => {
     const applyChapterStyles = () => {
-      const existingStyles = document.querySelectorAll(
-        "style[data-chapter-styles]"
-      );
+      const existingStyles = document.querySelectorAll("style[data-chapter-styles]");
       existingStyles.forEach((style) => style.remove());
       const styleElement = document.createElement("style");
       styleElement.setAttribute("data-chapter-styles", "true");
@@ -118,9 +117,7 @@ export default function Player({
         if (duration > 0 && currentTime >= duration) {
           art.pause();
           if (currentEpisodeIndex < episodes?.length - 1 && autoNext) {
-            playNext(
-              episodes[currentEpisodeIndex + 1].id.match(/ep=(\d+)/)?.[1]
-            );
+            playNext(episodes[currentEpisodeIndex + 1].id.match(/ep=(\d+)/)?.[1]);
           }
         }
       });
@@ -132,9 +129,7 @@ export default function Player({
         if (duration > 0 && currentTime >= duration) {
           art.pause();
           if (currentEpisodeIndex < episodes?.length - 1 && autoNext) {
-            playNext(
-              episodes[currentEpisodeIndex + 1].id.match(/ep=(\d+)/)?.[1]
-            );
+            playNext(episodes[currentEpisodeIndex + 1].id.match(/ep=(\d+)/)?.[1]);
           }
         }
       });
@@ -154,31 +149,76 @@ export default function Player({
     return chapters;
   };
 
+  const isEditableElement = (el) => {
+    if (!el) return false;
+    const tagName = el.tagName?.toLowerCase();
+    if (tagName === "input" || tagName === "textarea" || el.isContentEditable) return true;
+    if (el.closest) {
+      const editable = el.closest("input, textarea, [contenteditable='true']");
+      return !!editable;
+    }
+    return false;
+  };
+
   const handleKeydown = (event, art) => {
+    const container = artRef.current;
+    if (!container || !art) return;
+
     const target = event.target;
-    const tagName = target?.tagName?.toLowerCase();
-    const isEditable = target?.isContentEditable;
+    if (isEditableElement(target)) return;
 
-    if (tagName === "input" || tagName === "textarea" || isEditable) return;
+    const eventIsInsidePlayer =
+      container.contains(target) || container.contains(document.activeElement);
 
-    switch (event.code) {
+    if (!eventIsInsidePlayer) return;
+
+    const code = event.code;
+
+    switch (code) {
       case KEY_CODES.M:
         art.muted = !art.muted;
         break;
       case KEY_CODES.I:
         art.pip = !art.pip;
         break;
-      case KEY_CODES.F:
+      case KEY_CODES.F: {
         event.preventDefault();
         event.stopPropagation();
-        art.fullscreen = !art.fullscreen;
+
+        const container = artRef.current;
+        const doc = document;
+        const fsEl =
+          doc.fullscreenElement ||
+          doc.webkitFullscreenElement ||
+          doc.mozFullScreenElement ||
+          doc.msFullscreenElement;
+
+        if (fsEl && (fsEl === container || container.contains(fsEl))) {
+          if (doc.exitFullscreen) doc.exitFullscreen();
+          else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+          else if (doc.mozCancelFullScreen) doc.mozCancelFullScreen();
+          else if (doc.msExitFullscreen) doc.msExitFullscreen();
+        } else {
+          if (container.requestFullscreen) container.requestFullscreen();
+          else if (container.webkitRequestFullscreen) container.webkitRequestFullscreen();
+          else if (container.mozRequestFullScreen) container.mozRequestFullScreen();
+          else if (container.msRequestFullscreen) container.msRequestFullscreen();
+        }
+
+        try {
+          art.fullscreen = !art.fullscreen;
+        } catch (e) {
+          // ignore if art not available
+        }
         break;
+      }
       case KEY_CODES.V:
         event.preventDefault();
         event.stopPropagation();
         art.subtitle.show = !art.subtitle.show;
         break;
       case KEY_CODES.SPACE:
+      case KEY_CODES.SPACE_LEGACY:
         event.preventDefault();
         event.stopPropagation();
         art.playing ? art.pause() : art.play();
@@ -213,8 +253,22 @@ export default function Player({
 
     const iframeUrl = streamInfo?.streamingLink?.iframe;
     const headers = {
-      referer: new URL(iframeUrl).origin + "/",
+      referer: iframeUrl ? new URL(iframeUrl).origin + "/" : window.location.origin + "/",
     };
+
+    const container = artRef.current;
+    let fullscreenRefocusTimeout = null;
+
+    try {
+      if (!container.hasAttribute("tabindex")) container.setAttribute("tabindex", "0");
+      else {
+        const current = parseInt(container.getAttribute("tabindex"), 10);
+        if (isNaN(current) || current < 0) container.setAttribute("tabindex", "0");
+      }
+      container.style.outline = "none";
+    } catch (e) {
+      // ignore
+    }
 
     const art = new Artplayer({
       url:
@@ -229,7 +283,7 @@ export default function Player({
       setting: true,
       playbackRate: true,
       pip: true,
-      hotkey: false,
+      hotkey: false, 
       fullscreen: true,
       mutex: true,
       playsInline: true,
@@ -375,7 +429,48 @@ export default function Player({
       });
     });
 
+    const refocusIfNeeded = (delay = 30) => {
+      try {
+        if (!container) return;
+        const active = document.activeElement;
+        if (!container.contains(active)) {
+          fullscreenRefocusTimeout = setTimeout(() => {
+            try {
+              container.focus();
+            } catch (e) {
+              // ignore
+            }
+          }, delay);
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement && !document.webkitIsFullScreen && !document.mozFullScreen && !document.msFullscreenElement) {
+        refocusIfNeeded(40);
+      } else {
+        refocusIfNeeded(20);
+      }
+    };
+
+    // vendor event wrappers
+    const fullscreenEvents = [
+      "fullscreenchange",
+      "webkitfullscreenchange",
+      "mozfullscreenchange",
+      "MSFullscreenChange",
+    ];
+    fullscreenEvents.forEach((ev) => document.addEventListener(ev, onFullscreenChange));
+
     art.on("ready", () => {
+      try {
+        container.focus();
+      } catch (e) {
+        // ignore
+      }
+
       const continueWatchingList = JSON.parse(localStorage.getItem("continueWatching")) || [];
       const currentEntry = continueWatchingList.find((item) => item.episodeId === episodeId);
       if (currentEntry?.leftAt) art.currentTime = currentEntry.leftAt;
@@ -414,11 +509,28 @@ export default function Player({
       boundKeydownRef.current = boundKeydown;
       document.addEventListener("keydown", boundKeydown);
 
-      art.on("destroy", () => {
-        if (boundKeydownRef.current) {
-          document.removeEventListener("keydown", boundKeydownRef.current);
-          boundKeydownRef.current = null;
+      const focusOnPointerDown = () => {
+        try {
+          container.focus();
+        } catch (err) {
+          // ignore
         }
+      };
+      container.addEventListener("pointerdown", focusOnPointerDown, { passive: true });
+
+      const onWindowFocus = () => refocusIfNeeded(30);
+      window.addEventListener("focus", onWindowFocus);
+
+      art.on("destroy", () => {
+        try {
+          document.removeEventListener("keydown", boundKeydown);
+        } catch (e) {}
+        try {
+          container.removeEventListener("pointerdown", focusOnPointerDown);
+        } catch (e) {}
+        try {
+          window.removeEventListener("focus", onWindowFocus);
+        } catch (e) {}
       });
 
       art.subtitle.style({
@@ -432,6 +544,7 @@ export default function Player({
           })
         );
       }
+
       const $rewind = art.layers["rewind"];
       const $forward = art.layers["forward"];
       Artplayer.utils.isMobile &&
@@ -486,44 +599,46 @@ export default function Player({
       }
     });
 
-   return () => {
-    if (art && art.destroy) {
-      art.destroy(false);
-    }
+    return () => {
+      if (art && art.destroy) {
+        art.destroy(false);
+      }
 
-    if (boundKeydownRef.current) {
-      document.removeEventListener("keydown", boundKeydownRef.current);
-      boundKeydownRef.current = null;
-    }
+      fullscreenEvents.forEach((ev) => document.removeEventListener(ev, onFullscreenChange));
+      if (boundKeydownRef.current) {
+        try {
+          document.removeEventListener("keydown", boundKeydownRef.current);
+        } catch (e) {}
+        boundKeydownRef.current = null;
+      }
+      if (fullscreenRefocusTimeout) clearTimeout(fullscreenRefocusTimeout);
 
-    try {
-      const continueWatching = JSON.parse(localStorage.getItem("continueWatching")) || [];
-      const newEntry = {
-        id: animeInfo?.id,
-        data_id: animeInfo?.data_id,
-        episodeId,
-        episodeNum,
-        adultContent: animeInfo?.adultContent,
-        poster: animeInfo?.poster,
-        title: animeInfo?.title,
-        japanese_title: animeInfo?.japanese_title,
-        leftAt: leftAtRef.current,
-        updatedAt: Date.now(), 
-      };
+      try {
+        const continueWatching = JSON.parse(localStorage.getItem("continueWatching")) || [];
+        const newEntry = {
+          id: animeInfo?.id,
+          data_id: animeInfo?.data_id,
+          episodeId,
+          episodeNum,
+          adultContent: animeInfo?.adultContent,
+          poster: animeInfo?.poster,
+          title: animeInfo?.title,
+          japanese_title: animeInfo?.japanese_title,
+          leftAt: leftAtRef.current,
+          updatedAt: Date.now(),
+        };
 
-      if (!newEntry.data_id) return;
+        if (!newEntry.data_id) return;
 
-      const filtered = continueWatching.filter((item) => item.data_id !== newEntry.data_id);
-
-      filtered.unshift(newEntry);
-
-      localStorage.setItem("continueWatching", JSON.stringify(filtered));
-    } catch (err) {
-      console.error("Failed to save continueWatching:", err);
-    }
-  };
+        const filtered = continueWatching.filter((item) => item.data_id !== newEntry.data_id);
+        filtered.unshift(newEntry);
+        localStorage.setItem("continueWatching", JSON.stringify(filtered));
+      } catch (err) {
+        console.error("Failed to save continueWatching:", err);
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamUrl, subtitles, intro, outro]);
 
-  return <div ref={artRef} className="w-full h-full"></div>;
+  return <div ref={artRef} className="w-full h-full" />;
 }
